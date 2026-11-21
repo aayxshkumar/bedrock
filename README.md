@@ -18,7 +18,7 @@ faults            PASS                0/4  illegal word, misaligned jump, bad lo
 0 failed
 ```
 
-No dependencies beyond googletest. Built with Apple clang 17. CI covers GCC and Clang on Linux, plus ASan and UBSan.
+No dependencies beyond googletest, which ships in `third_party/`, so the build needs no network. Requirements: GCC 11+ or Clang 14+, CMake 3.24+, and Python 3 (standard library only) for `tools/mutants.py`. Developed with Apple clang 17. CI covers GCC and Clang on Linux, plus ASan and UBSan.
 
 ## Build and run
 
@@ -42,7 +42,7 @@ Multiple `.s` files are assembled as one unit, so `programs/lib.s` (putc, print_
 |---|---|---|---|
 | 0 | **RV32IM CPU**: decoder, all 48 RV32IM instructions, faults, `write`/`exit` syscalls | done | hand-derived unit tests, 200k-instruction differential fuzz against a host model, programs whose output is compared with the host |
 | 1 | **Assembler**: two passes, labels, pseudo-instructions, data directives, `%hi`/`%lo` | done | encodings compared with GNU `as`, error messages with line numbers, programs end to end |
-| 2 | **Privileged architecture**: CSRs, M/S/U modes, trap entry and `mret`, timer interrupt, Sv32 page tables | not started | official `riscv-tests` (`rv32mi`, `rv32si`), vendored for offline runs |
+| 2 | **Privileged architecture**: CSRs, M/S/U modes, trap entry and `mret`, timer interrupt, Sv32 page tables | not started | spec-derived trap tests written as bedrock assembly (every trap cause, `mcause`/`mepc`/`mtval` values, page-fault cases), plus a minimal ELF32 loader so prebuilt `riscv-tests` binaries can run if a copy is packed into `third_party/` |
 | 3 | **Kernel** in bedrock assembly: trap handler, round-robin scheduler, `fork`/`exec`/`wait`, a RAM filesystem | not started | deterministic multi-process programs with known interleavings; isolation tests (a process can't touch another's pages) |
 | 4 | **C-subset compiler** (ints, pointers, arrays, structs, functions), writing bedrock assembly | not started | differential: compile each test program here and with host clang, and compare the outputs; fuzz with generated programs |
 | 5 | **Userland**: a libc subset, a shell, and the assembler and compiler ported to run *on* bedrock | not started | **bootstrap fixed point**: the compiler compiled on bedrock compiles itself, and stage 2 and stage 3 binaries are byte-identical |
@@ -74,7 +74,7 @@ Pass 1 walks every statement to give each label an address. Pass 2 encodes with 
 ## Known gaps
 
 1. **No privileged architecture.** There are no CSRs and no traps, so nothing can catch a fault. That is stage 2.
-2. **Not yet run against the official RISC-V test suites.** Every expected value here was derived by hand from the spec, or computed on the host. Vendoring `riscv-tests` and `riscv-arch-test` is the first task of stage 2.
+2. **Not run against the official RISC-V test suites.** Every expected value here was derived by hand from the spec, or computed on the host. The official suites are assembly that has to be built with a RISC-V GCC cross-compiler, which this project deliberately doesn't use, so they can only come in as prebuilt binaries through the ELF loader planned for stage 2.
 3. **`li` with a symbol that is defined later, or that lives in data, always takes two instructions**, even when one would do (`hello.s` shows this). `call` is a single `jal`, so it only reaches ±1 MiB, which is the whole memory today.
 4. **No C (compressed) or A (atomic) extensions.** Code from a real compiler would need `-march=rv32im`. That doesn't matter while every program is written here.
 5. **Unit-test blind spot:** a `mulhsu` that treats rs2 as signed passes every unit test. Only `--check` catches it (see below).
